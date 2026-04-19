@@ -3,6 +3,7 @@ package com.scarletra;
 import io.github.bonigarcia.wdm.WebDriverManager;
 import com.warrenstrange.googleauth.GoogleAuthenticator;
 import org.openqa.selenium.By;
+import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
@@ -34,6 +35,7 @@ public class GmailTest {
         options.setExperimentalOption("excludeSwitches", Collections.singletonList("enable-automation"));
         options.setExperimentalOption("useAutomationExtension", false);
         options.addArguments("--remote-allow-origins=*");
+        options.addArguments("--lang=en-US"); 
         
         driver = new ChromeDriver(options);
         wait = new WebDriverWait(driver, Duration.ofSeconds(30));
@@ -53,34 +55,75 @@ public class GmailTest {
             passInput.sendKeys("Scarletra05");
             driver.findElement(By.id("passwordNext")).click();
 
+            try { Thread.sleep(3000); } catch (InterruptedException e) {}
+
+            // Reference:
+            // https://github.com/shaffan15/selenium-2fa-login-automation/blob/main/src/test/java/auth/WorkplaceLoginTest.java
+            // https://www.giaphi.com/2025/01/automate-google-mfa-login-with-selenium.html
+            try {
+                WebDriverWait shortWait = new WebDriverWait(driver, Duration.ofSeconds(5));
+                
+                try {
+                    shortWait.until(ExpectedConditions.presenceOfElementLocated(By.id("totpPin")));
+                } catch (Exception e1) {
+                    try {
+                        WebElement authOption = shortWait.until(ExpectedConditions.elementToBeClickable(
+                            By.xpath("//div[@data-challengetype='6']")
+                        ));
+                        authOption.click();
+                    } catch (Exception e2) {
+                        WebElement tryAnotherWay = wait.until(ExpectedConditions.elementToBeClickable(
+                            By.xpath("//span[text()='Try another way']/ancestor::button")
+                        ));
+                        tryAnotherWay.click();
+                        
+                        Thread.sleep(2000);
+                        
+                        WebElement authOptionAfterClick = wait.until(ExpectedConditions.elementToBeClickable(
+                            By.xpath("//div[@data-challengetype='6']")
+                        ));
+                        authOptionAfterClick.click();
+                    }
+                }
+            } catch (Exception eFinal) {
+                System.out.println("LOG: 2FA Flow failed or not needed: " + eFinal.getMessage());
+            }
+
+            try { Thread.sleep(2000); } catch (InterruptedException e) {}
+
             String secretKey = "xq4ntt7ifysxfwiajgy65hjzbkmzz2pg"; 
             GoogleAuthenticator gAuth = new GoogleAuthenticator();
-            String otpCode = String.valueOf(gAuth.getTotpPassword(secretKey));
+            int rawOtp = gAuth.getTotpPassword(secretKey);
+            String otpCode = String.format("%06d", rawOtp);
 
             WebElement otpInput = wait.until(ExpectedConditions.elementToBeClickable(By.id("totpPin")));
             otpInput.sendKeys(otpCode);
             driver.findElement(By.id("totpNext")).click();
 
-            wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("tr.zE")));
-            List<WebElement> unreadEmails = driver.findElements(By.cssSelector("tr.zE"));
-            
+            wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("table.F.cf.zt")));
+
+            List<WebElement> unreadEmails = wait.until(ExpectedConditions.presenceOfAllElementsLocatedBy(By.cssSelector("tr.zE")));
             Assert.assertTrue(unreadEmails.size() > 0, "No unread emails found.");
+            String unreadSubject = unreadEmails.get(0).findElement(By.cssSelector("span.bog")).getText();
 
-            WebElement lastUnread = unreadEmails.get(0);
-            String subject = lastUnread.findElement(By.cssSelector("span.bog")).getText();
-            
             System.out.println("----------------------------------------------");
-            System.out.println("LOG: Last Unread Email Title: " + subject);
+            System.out.println("LOG: Last Unread Email Title: " + unreadSubject);
             System.out.println("----------------------------------------------");
 
-            WebElement checkbox = lastUnread.findElement(By.cssSelector("div[role='checkbox']"));
-            checkbox.click();
+            WebElement firstEmail = wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("tr.zA")));
+            String firstEmailSubject = firstEmail.findElement(By.cssSelector("span.bog")).getText();
 
-            WebElement deleteButton = wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector("div[aria-label='Delete']")));
+            WebElement checkbox = firstEmail.findElement(By.cssSelector("div[role='checkbox']"));
+            ((JavascriptExecutor) driver).executeScript("arguments[0].click();", checkbox);
+
+            WebElement deleteButton = wait.until(ExpectedConditions.elementToBeClickable(
+                By.xpath("//div[@act='10' or @data-tooltip='Delete']")
+            ));
             deleteButton.click();
 
-            wait.until(ExpectedConditions.visibilityOfElementLocated(By.xpath("//span[contains(text(), 'moved to Bin')]")));
-            System.out.println("LOG: Successfully deleted email: " + subject);
+            wait.until(ExpectedConditions.stalenessOf(firstEmail));
+
+            System.out.println("LOG: Successfully deleted email: " + firstEmailSubject);
 
         } catch (Exception e) {
             e.printStackTrace();
