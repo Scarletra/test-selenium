@@ -110,6 +110,8 @@ public class GmailTest {
             System.out.println("LOG: Last Unread Email Title: " + unreadSubject);
             System.out.println("----------------------------------------------");
 
+            try { Thread.sleep(1500); } catch (InterruptedException e) {}
+
             WebElement firstEmail = wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("tr.zA")));
             String firstEmailSubject = firstEmail.findElement(By.cssSelector("span.bog")).getText();
 
